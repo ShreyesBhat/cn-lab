@@ -82,11 +82,11 @@ int
 main (int argc, char *argv[])
 {
   double simulationTime = 10; //seconds
-  std::string transportProt = "Tcp";
+  std::string transportProt = "Udp";
   std::string socketType;
 
   CommandLine cmd;
-  cmd.AddValue ("transportProt", "Transport protocol to use: Tcp, Udp", transportProt);
+  //md.AddValue ("transportProt", "Transport protocol to use: Tcp, Udp", transportProt); //mod
   cmd.Parse (argc, argv);
 
   if (transportProt.compare ("Tcp") == 0)
@@ -99,20 +99,29 @@ main (int argc, char *argv[])
     }
 
   NodeContainer nodes;
-  nodes.Create (2);
+  nodes.Create (3);//mod
 
   PointToPointHelper pointToPoint;
   pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("10Mbps"));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
   pointToPoint.SetQueue ("ns3::DropTailQueue", "Mode", StringValue ("QUEUE_MODE_PACKETS"), "MaxPackets", UintegerValue (1));
 
-  NetDeviceContainer devices;
-  devices = pointToPoint.Install (nodes);
+  NetDeviceContainer devices1;
+  devices1 =pointToPoint.Install (nodes.Get(0),nodes.Get(1)); //mod
+
+  NetDeviceContainer devices2;
+  devices2 =pointToPoint.Install (nodes.Get(1),nodes.Get(2)); //mod
 
   InternetStackHelper stack;
   stack.Install (nodes);
 
-  TrafficControlHelper tch;
+
+
+
+
+
+
+ /* TrafficControlHelper tch;
   uint16_t handle = tch.SetRootQueueDisc ("ns3::RedQueueDisc");
   // Add the internal queue used by Red
   tch.AddInternalQueues (handle, 1, "ns3::DropTailQueue", "MaxPackets", UintegerValue (10000));
@@ -127,35 +136,40 @@ main (int argc, char *argv[])
   Ptr<NetDevice> nd = devices.Get (1);
   Ptr<PointToPointNetDevice> ptpnd = DynamicCast<PointToPointNetDevice> (nd);
   Ptr<Queue> queue = ptpnd->GetQueue ();
-  queue->TraceConnectWithoutContext ("PacketsInQueue", MakeCallback (&DevicePacketsInQueueTrace));
+  queue->TraceConnectWithoutContext ("PacketsInQueue", MakeCallback (&DevicePacketsInQueueTrace));*/
 
-  Ipv4AddressHelper address;
-  address.SetBase ("10.1.1.0", "255.255.255.0");
-
-  Ipv4InterfaceContainer interfaces = address.Assign (devices);
+//mod<>
+  Ipv4AddressHelper address1;
+  address1.SetBase ("10.1.1.0", "255.255.255.0");
+  Ipv4AddressHelper address2;
+  address2.SetBase ("10.1.2.0", "255.255.255.0");
+Ipv4InterfaceContainer interfaces1 = address1.Assign (devices1);//mod
+Ipv4InterfaceContainer interfaces2 = address2.Assign (devices2); //mod
+Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+//mod</>
 
   //Flow
   uint16_t port = 7;
   Address localAddress (InetSocketAddress (Ipv4Address::GetAny (), port));
   PacketSinkHelper packetSinkHelper (socketType, localAddress);
-  ApplicationContainer sinkApp = packetSinkHelper.Install (nodes.Get (0));
+  ApplicationContainer sinkApp = packetSinkHelper.Install (nodes.Get (2));//mod
 
   sinkApp.Start (Seconds (0.0));
   sinkApp.Stop (Seconds (simulationTime + 0.1));
 
-  uint32_t payloadSize = 1448;
+  uint32_t payloadSize = 33448;
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (payloadSize));
 
   OnOffHelper onoff (socketType, Ipv4Address::GetAny ());
   onoff.SetAttribute ("OnTime",  StringValue ("ns3::ConstantRandomVariable[Constant=1]"));
   onoff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0]"));
   onoff.SetAttribute ("PacketSize", UintegerValue (payloadSize));
-  onoff.SetAttribute ("DataRate", StringValue ("50Mbps")); //bit/s
+  onoff.SetAttribute ("DataRate", StringValue ("105Mbps")); //bit/s
   ApplicationContainer apps;
 
-  AddressValue remoteAddress (InetSocketAddress (interfaces.GetAddress (0), port));
+  AddressValue remoteAddress (InetSocketAddress (interfaces2.GetAddress (1), port));//mod
   onoff.SetAttribute ("Remote", remoteAddress);
-  apps.Add (onoff.Install (nodes.Get (1)));
+  apps.Add (onoff.Install (nodes.Get (0)));//mod
   apps.Start (Seconds (1.0));
   apps.Stop (Seconds (simulationTime + 0.1));
 
@@ -168,7 +182,10 @@ main (int argc, char *argv[])
   Ptr<Ipv4FlowClassifier> classifier = DynamicCast<Ipv4FlowClassifier> (flowmon.GetClassifier ());
   std::map<FlowId, FlowMonitor::FlowStats> stats = monitor->GetFlowStats ();
   std::cout << std::endl << "*** Flow monitor statistics ***" << std::endl;
-  std::cout << "  Tx Packets:   " << stats[1].txPackets << std::endl;
+  std::cout << "  Tx Packets:   " << stats[1].lostPackets << std::endl;
+
+//mod<>
+/*
   std::cout << "  Tx Bytes:   " << stats[1].txBytes << std::endl;
   std::cout << "  Offered Load: " << stats[1].txBytes * 8.0 / (stats[1].timeLastTxPacket.GetSeconds () - stats[1].timeFirstTxPacket.GetSeconds ()) / 1000000 << " Mbps" << std::endl;
   std::cout << "  Rx Packets:   " << stats[1].rxPackets << std::endl;
@@ -180,10 +197,14 @@ main (int argc, char *argv[])
   std::cout << "  Throughput: " << stats[1].rxBytes * 8.0 / (stats[1].timeLastRxPacket.GetSeconds () - stats[1].timeFirstRxPacket.GetSeconds ()) / 1000000 << " Mbps" << std::endl;
   std::cout << "  Mean delay:   " << stats[1].delaySum.GetSeconds () / stats[1].rxPackets << std::endl;
   std::cout << "  Mean jitter:   " << stats[1].jitterSum.GetSeconds () / (stats[1].rxPackets - 1) << std::endl;
+*/
 
   Simulator::Destroy ();
 
-  std::cout << std::endl << "*** Application statistics ***" << std::endl;
+ 
+//mod<>
+/*
+ std::cout << std::endl << "*** Application statistics ***" << std::endl;
   double thr = 0;
   uint32_t totalPacketsThr = DynamicCast<PacketSink> (sinkApp.Get (0))->GetTotalRx ();
   thr = totalPacketsThr * 8 / (simulationTime * 1000000.0); //Mbit/s
@@ -194,6 +215,6 @@ main (int argc, char *argv[])
   std::cout << "  Bytes dropped by the TC layer: " << q->GetTotalDroppedBytes () << std::endl;
   std::cout << "  Packets dropped by the netdevice: " << queue->GetTotalDroppedPackets () << std::endl;
   std::cout << "  Packets requeued by the TC layer: " << q->GetTotalRequeuedPackets () << std::endl;
-
+*/
   return 0;
 }
